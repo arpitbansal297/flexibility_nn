@@ -5,21 +5,18 @@ import os
 import sys
 import wandb
 from typing import List
-from torchvision import datasets, transforms, utils
 from torch.utils.data import DataLoader
 
 from torch import nn
-from typing import Dict, Callable
-import torch
 from typing import Dict, Optional
 import torch
 from torch.optim import Optimizer, lr_scheduler
 from torch.nn import Module
 from typing import Callable
-from torch import Tensor
-import numpy as np
-from flexibility_nn.utils import get_args, load_checkpoint, setup_logging, write_metrics_to_csv, count_parameters, calculate_metrics
-from flexibility_nn.datasets.datasets1 import load_data, get_transforms, PrefetchLoader, DataPrefetcher
+
+from flexibility_nn.utils import get_args, load_checkpoint, setup_logging, write_metrics_to_csv, count_parameters, \
+    calculate_metrics
+from flexibility_nn.datasets.datasets import load_data, get_transforms, PrefetchLoader, DataPrefetcher
 from flexibility_nn.models.models import get_optimizer, get_model, CustomProjectionModel
 from accelerate import Accelerator
 from flexibility_nn.projectors import IDModule, CombinedRDKronFiLM
@@ -33,12 +30,6 @@ Model = Module
 Device = torch.device
 Metrics = Dict[str, float]
 LossFunction = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
-
-
-## Get the parent directory of the current script
-# parent_directory = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-## Add the parent directory to sys.path
-# sys.path.append(parent_directory)
 
 
 def train_model(
@@ -96,8 +87,8 @@ def main_training_loop(args, net: Model, trainloader_trim: DataLoader, device: D
                        csv_headers: List[str], log_dir: str, num_examples: int):
     step_counter = total_loss = total_acc = counter = 0
     finished_run = False
-    acc_train=0.
-    acc_test= 0.
+    acc_train = 0.
+    acc_test = 0.
     acc_test_org = 0.
 
     with tqdm(
@@ -107,6 +98,7 @@ def main_training_loop(args, net: Model, trainloader_trim: DataLoader, device: D
     ) as pbar:
 
         while step_counter < args.total_steps and not finished_run:
+
             data_iterator = iter(trainloader_trim)  # Create a new iterator for each epoch
             for inputs, targets in data_iterator:
 
@@ -123,11 +115,10 @@ def main_training_loop(args, net: Model, trainloader_trim: DataLoader, device: D
                 if step_counter % args.num_to_print == 0:
                     net.eval()
                     counter, total_acc, total_loss = 0, 0., 0.
-                    func_metrics = partial(calculate_metrics, model = net, device=device, criterion=criterion)
-                    acc_train, loss_train = func_metrics(data_loader=iter(trainloader_trim_test),    num_of_steps=1000)
-                    acc_test, loss_test = func_metrics(data_loader=iter(testloader),    num_of_steps=1000)
-                    acc_test_org, loss_test_org = func_metrics(data_loader=iter(testloader_org),    num_of_steps=1000)
-
+                    func_metrics = partial(calculate_metrics, model=net, device=device, criterion=criterion)
+                    acc_train, loss_train = func_metrics(data_loader=iter(trainloader_trim_test), num_of_steps=500)
+                    acc_test, loss_test = func_metrics(data_loader=iter(testloader), num_of_steps=500)
+                    acc_test_org, loss_test_org = func_metrics(data_loader=iter(testloader_org), num_of_steps=500)
 
                     metrics = {
                         'step': step_counter,
@@ -216,7 +207,8 @@ def prepare_model_and_data(args, trainloader, num_classes, input_size, original_
 def main():
     args: object = get_args()
     csv_headers = ['step', 'train_loss', 'train_accuracy', 'test_loss', 'test_accuracy', 'grad_norm',
-                   'train_accuracy_total', 'test_accuracy_total', 'test_accuracy_total_org', 'eff_dim_val', 'test_loss_total_org']
+                   'train_accuracy_total', 'test_accuracy_total', 'test_accuracy_total_org', 'eff_dim_val',
+                   'test_loss_total_org']
 
     num_examples_points = get_num_examples(args)
     transform_train, transform_test, input_size = get_transforms(dataset=args.dataset)
@@ -250,8 +242,8 @@ def main():
             net, optimizer, trainloader_trim, lr_scheduler, testloader, trainloader_trim_test
         )
 
-        initialize_logging(args = args, accelerator=accelerator, log_dir = log_dir, file_path = file_path )
-        print (args)
+        initialize_logging(args=args, accelerator=accelerator, log_dir=log_dir, file_path=file_path)
+        print(args)
         finished_run = main_training_loop(
             args=args, net=net, trainloader_trim=trainloader_trim, device=device, accelerator=accelerator,
             optimizer=optimizer, lr_scheduler=lr_scheduler, criterion=criterion,

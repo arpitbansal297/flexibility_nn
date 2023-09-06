@@ -418,13 +418,13 @@ def prepare_data_loaders(args, trainloader, root='/state/partition1/rs8020/'):
             idx = perm[:args.num_examples]
             train_data_subset = torch.utils.data.Subset(trainloader.dataset, idx)
         trainloader_trim = DataLoaderWithPrefetch(train_data_subset, batch_size=int(args.batch_size), shuffle=True,
-                                                  num_workers=args.workers, persistent_workers=True, pin_memory=False,
-                                                  prefetch_size=args.workers * 200)
+                                                  num_workers=args.workers, persistent_workers=True, pin_memory=True,
+                                                  prefetch_size=args.workers * 1000)
 
         trainloader_trim_test = DataLoaderWithPrefetch(train_data_subset, batch_size=int(args.batch_size),
                                                        shuffle=False, num_workers=args.workers,
                                                        persistent_workers=True, pin_memory=True,
-                                                       prefetch_size=args.workers * 200)
+                                                       prefetch_size=args.workers * 1000)
     else:
         trainloader_trim = trainloader
         trainloader_trim_test = trainloader

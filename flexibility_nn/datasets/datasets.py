@@ -41,7 +41,6 @@ def load_permuted_dataset(root, train=True, transform=None, target_transform=Non
 
     path_s = 'cifar10_rand_labels/permuted_train.pth' if train else 'cifar10_rand_labels/permuted_test.pth'
     path = root / Path(path_s)
-    print ('PAAPPA', path)
     images, labels = torch.load(path)
 
     # If a transform is provided, apply it to the images
@@ -62,8 +61,6 @@ def load_permuted_dataset_rand_labels(root, train=True, transform=None, target_t
     # Choose the appropriate path based on the train flag
     path_s = 'cifar10_rand_labels/permuted_train.pth' if train else 'cifar10_rand_labels/permuted_test.pth'
     path = root / Path(path_s)
-    print ('33333PAAPPA', path)
-
     images, labels = torch.load(path)
 
     # If a transform is provided, apply it to the images
@@ -109,7 +106,8 @@ def get_cifar10_options(data_dir, transform_train, transform_test):
         "testset": {"root": data_dir, "train": False, "download": True, "transform": transform_test},
         "old_num_classes": 10,
         "testset_org": {"root": data_dir, "transform": transform_test, "train": False},
-        'make_target_transform': False
+        'make_target_transform': False,
+        "num_classes":10,
     }
 
 
@@ -134,6 +132,7 @@ def get_imagenet_options(data_dir, transform_train, transform_test):
         "testset": {"root": "/imagenet/val", "transform": transform_test},
         "testset_org": {"root": "/imagenet/val", "transform": transform_test},
         "old_num_classes": 1_000,
+        "num_classes":1_000,
         'make_target_transform': True,
     }
 
@@ -249,38 +248,37 @@ def load_num_sample(root):
     return total_samples
 
 class GaussianRandomDataset(Dataset):
-    def __init__(self, dataset, gaussian = False):
+    def __init__(self, dataset, gaussian = False, random_label = False, num_of_labels=1000):
         self.dataset = dataset
         self.input_shape = None
         self.gaussian = gaussian
         self.all_indexes = {}
+        self.random_label = random_label
+        self.num_of_labels = num_of_labels
 
     def __getitem__(self, index):
-        #if index not in self.all_indexes:
-        #    self.all_indexes[index]=1
-        #print (len(self.all_indexes))
         data, target = self.dataset[index]
-
-        # Convert the data to a PyTorch tensor and get its shape
-
-        if self.input_shape is None:
-            if not isinstance(data, torch.Tensor):
-                data_tensor = transforms.ToTensor()(data)
-            else:
-                data_tensor = data
-            self.input_shape = data_tensor.shape
 
         # Generate a Gaussian random array of the same shape as the data
         random_state = np.random.RandomState(index)  # Use the index as the seed
 
-        if self.gaussian:
-            data = torch.from_numpy(random_state.normal(0., 1., self.input_shape)).float()
+        if self.random_label:
+            target = random_state.randint(0, self.num_of_labels)
         else:
-            data_reshpaed = data.reshape((-1,))
-            per = torch.from_numpy(random_state.permutation(math.prod(self.input_shape)))
-            data =  data_reshpaed[per].reshape(self.input_shape).float()
+            # Convert the data to a PyTorch tensor and get its shape
+            if self.input_shape is None:
+                if not isinstance(data, torch.Tensor):
+                    data_tensor = transforms.ToTensor()(data)
+                else:
+                    data_tensor = data
+                self.input_shape = data_tensor.shape
 
-                 #   + torch.from_numpy(random_state.normal(0., 1., self.input_shape)).float() ) /2.
+            if self.gaussian:
+                data = torch.from_numpy(random_state.normal(0., 1., self.input_shape)).float()
+            else:
+                data_reshpaed = data.reshape((-1,))
+                per = torch.from_numpy(random_state.permutation(math.prod(self.input_shape)))
+                data =  data_reshpaed[per].reshape(self.input_shape).float()
 
 
         return data, target
@@ -318,6 +316,7 @@ def load_data(transform_train: transforms.Compose, transform_test: transforms.Co
         copy_images(options['new_root'], options['testset']['root'], 10_000, 512, random_dest = random_labels)
     if num_new_classes is not None:
         options['num_classes'] = num_new_classes
+
     if 'make_target_transform' in options:
         bin_labels_c = functools.partial(bin_labels,old_num_classes=options['old_num_classes'], new_num_classes=options['num_classes'])
         options['trainset']['target_transform'] = transforms.Lambda(bin_labels_c)
@@ -343,15 +342,17 @@ def load_data(transform_train: transforms.Compose, transform_test: transforms.Co
         test_org_class = dataset_class
     testset_org = test_org_class(**options["testset_org"])
     num_classes = options.get("num_classes")
-    if random_input:
+    if random_input or random_labels:
+        print ('Random Labels or Input')
         # Replace the datasets with Gaussian random datasets
-        trainset = GaussianRandomDataset(trainset)
-        testset = GaussianRandomDataset(testset)
-    if random_labels:
+        trainset = GaussianRandomDataset(trainset, random_label=random_labels)
+        testset = GaussianRandomDataset(testset, random_label=random_labels)
+    if False and random_labels:
         train_random_labels = torch.randint(0, num_classes, (len(trainset),))
         test_random_labels = torch.randint(0, num_classes, (len(testset),))
         trainset.targets = train_random_labels.tolist()
         testset.targets = test_random_labels.tolist()
+        print ('RANDAOM LABELS _!!!!!!')
 
     trainloader = DataLoader(trainset, batch_size=batch_size,  persistent_workers = False, shuffle=False, num_workers=workers, pin_memory = False)
     testloader = DataLoader(testset, batch_size=512,  persistent_workers = True, shuffle=False, num_workers=workers,  pin_memory = True)
