@@ -69,7 +69,7 @@ def get_args():
 
     parser.add_argument('-c', '--config', default='', type=str, metavar='FILE',
                         help='YAML config file specifying default arguments')
-    parser.add_argument('--name', default='default', type=str,
+    parser.add_argument('--name_exp', default='default', type=str,
                         help='The name of the experiment')
 
     # Dataset parameters

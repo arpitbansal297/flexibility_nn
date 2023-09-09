@@ -147,7 +147,7 @@ def main_training_loop(args, net: Model, trainloader_trim: DataLoader, device: D
 
         print(f'finish - num_examples: {num_examples}, finished_run: {finished_run}')
         if not args.no_hessian_eigs:
-            max_eval, min_eval, hvps, pos_evals, neg_evals, pos_bases = min_max_hessian_eigs(
+            max_eval, min_eval, hvps, pos_evals, neg_evals = min_max_hessian_eigs(
                 net, trainloader_trim, criterion, use_cuda=True, verbose=True
             )
             eff_dim_val = eff_dim(pos_evals.cpu().numpy())
@@ -229,8 +229,11 @@ def main():
     original_batch = args.batch_size
     original_log_dir = args.log_dir
 
-    csv_file_path, file_path, log_dir = prep_log_dir(original_log_dir, args)
+    print (num_examples_points)
     for num_examples in num_examples_points:
+        csv_file_path, file_path, log_dir = prep_log_dir(original_log_dir, args)
+
+        args.num_examples = num_examples
         net, trainloader_trim, trainloader_trim_test = prepare_model_and_data(
             args=args, trainloader=trainloader, num_classes=num_classes, input_size=input_size,
             original_batch=original_batch, num_examples=num_examples)
@@ -250,6 +253,8 @@ def main():
             test_classes=test_classes, csv_file_path=csv_file_path, csv_headers=csv_headers, log_dir=log_dir,
             num_examples=num_examples
         )
+        #if not finished_run:
+        #    break
 
 
 if __name__ == "__main__":
