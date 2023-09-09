@@ -12,7 +12,6 @@ from torch.autograd import Variable
 
 from gpytorch.utils.lanczos import lanczos_tridiag, lanczos_tridiag_to_diag
 
-#from swag.utils import flatten, unflatten_like
 
 ################################################################################
 #                              Supporting Functions
@@ -78,6 +77,21 @@ def eval_hess_vec_prod(vec, params, net, criterion, dataloader, use_cuda=False):
 ################################################################################
 #                  For computing Eigenvalues of Hessian
 ################################################################################
+def unflatten_like(vector, likeTensorList):
+    # Takes a flat torch.tensor and unflattens it to a list of torch.tensors
+    #    shaped like likeTensorList
+    outList = []
+    i = 0
+    for tensor in likeTensorList:
+        # n = module._parameters[name].numel()
+        n = tensor.numel()
+        outList.append(vector[:, i : i + n].view(tensor.shape))
+        i += n
+    return outList
+def flatten(lst):
+    tmp = [i.contiguous().view(-1, 1) for i in lst]
+    return torch.cat(tmp).view(-1)
+
 def min_max_hessian_eigs(
     net, dataloader, criterion, rank=0, use_cuda=False, verbose=False
 ):

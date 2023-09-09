@@ -31,7 +31,6 @@ Device = torch.device
 Metrics = Dict[str, float]
 LossFunction = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
 
-
 def train_model(
         model: nn.Module,
         inputs: torch.Tensor,
@@ -56,17 +55,11 @@ def train_model(
 
     # backward pass and optimization
     accelerator.backward(loss)
+
     optimizer.step()
 
     # Update learning rate
     lr_scheduler.step()
-
-    # Efficiently calculate gradient norm using in-place operations
-    grad_norm = 0.0
-    for param in model.parameters():
-        if param.grad is not None:
-            grad_norm += (param.grad.data ** 2).sum().item()
-    grad_norm = grad_norm ** 0.5  # Take square root to complete L2 norm calculation
 
     total_loss = loss.item()
     _, predicted = outputs.max(1)
@@ -76,7 +69,7 @@ def train_model(
     return {
         'train_loss': total_loss,
         'train_accuracy': correct / total,
-        'grad_norm': grad_norm,
+        #'grad_norm': grad_norm,
     }
 
 
@@ -90,35 +83,36 @@ def main_training_loop(args, net: Model, trainloader_trim: DataLoader, device: D
     acc_train = 0.
     acc_test = 0.
     acc_test_org = 0.
+    grad_train = 0.
 
     with tqdm(
             initial=0,
             total=args.total_steps,
             disable=not accelerator.is_main_process,
     ) as pbar:
-
         while step_counter < args.total_steps and not finished_run:
 
             data_iterator = iter(trainloader_trim)  # Create a new iterator for each epoch
+            num_of_steps_curent_epoch = 0
             for inputs, targets in data_iterator:
-
                 train_results = train_model(model=net, inputs=inputs, targets=targets, criterion=criterion,
                                             optimizer=optimizer, device=device, accelerator=accelerator,
                                             lr_scheduler=lr_scheduler)
-
+                num_of_steps_curent_epoch+=1
                 total_acc += train_results['train_accuracy']
                 total_loss += train_results['train_loss']
                 step_counter += 1
                 counter += 1
                 train_loss = total_loss / counter
                 avg_acc = train_results['train_accuracy']
+                #grad_norm += train_results['grad_norm']
                 if step_counter % args.num_to_print == 0:
                     net.eval()
                     counter, total_acc, total_loss = 0, 0., 0.
                     func_metrics = partial(calculate_metrics, model=net, device=device, criterion=criterion)
-                    acc_train, loss_train = func_metrics(data_loader=iter(trainloader_trim_test), num_of_steps=500)
-                    acc_test, loss_test = func_metrics(data_loader=iter(testloader), num_of_steps=500)
-                    acc_test_org, loss_test_org = func_metrics(data_loader=iter(testloader_org), num_of_steps=500)
+                    acc_train, loss_train, grad_train = func_metrics(data_loader=iter(trainloader_trim_test), num_of_steps=200)
+                    acc_test, loss_test ,grad_test= func_metrics(data_loader=iter(testloader), num_of_steps=200)
+                    acc_test_org, loss_test_org ,grad_org= func_metrics(data_loader=iter(testloader_org), num_of_steps=200)
 
                     metrics = {
                         'step': step_counter,
@@ -129,7 +123,7 @@ def main_training_loop(args, net: Model, trainloader_trim: DataLoader, device: D
                         'test_accuracy_total': acc_test,
                         'test_accuracy_total_org': acc_test_org,
                         'test_loss_total_org': loss_test_org,
-                        'grad_norm': train_results['grad_norm'],
+                        'grad_norm':grad_train,
                         'eff_dim_val': 0.
                     }
                     write_metrics_to_csv(csv_file_path, csv_headers, metrics)
@@ -148,7 +142,7 @@ def main_training_loop(args, net: Model, trainloader_trim: DataLoader, device: D
 
                 pbar.set_description(
                     f'Train Loss: {train_loss:.6f}, Train Accuracy: {avg_acc:.4f}, Train Accuracy Total: {acc_train:.4f}, '
-                    f' Test Accuracy Total: {acc_test:.4f}, Test Acc Org: {acc_test_org:.4f}')
+                    f' Test Accuracy Total: {acc_test:.4f}, Test Acc Org: {acc_test_org:.4f}, Grad Norm: {grad_train}')
                 pbar.update()
 
         print(f'finish - num_examples: {num_examples}, finished_run: {finished_run}')
@@ -157,8 +151,13 @@ def main_training_loop(args, net: Model, trainloader_trim: DataLoader, device: D
                 net, trainloader_trim, criterion, use_cuda=True, verbose=True
             )
             eff_dim_val = eff_dim(pos_evals.cpu().numpy())
+            #eigenvals, eigenvecs = compute_hessian_eigenthings(net, trainloader_trim,
+            #                                                   criterion, 10)
+
+
         else:
             eff_dim_val = -1
+
         metrics['eff_dim_val'] = eff_dim_val
         write_metrics_to_csv(csv_file_path, csv_headers, metrics)
         if args.use_wandb:
@@ -225,7 +224,7 @@ def main():
         num_new_classes=args.num_new_classes
     )
 
-    accelerator = Accelerator(log_with="wandb", logging_dir=".")
+    accelerator = Accelerator(log_with="wandb", project_dir=".")
     device = accelerator.device
     original_batch = args.batch_size
     original_log_dir = args.log_dir

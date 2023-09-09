@@ -28,6 +28,10 @@ from torch.nn import Module
 from typing import Callable
 from torch import Tensor
 import pandas as pd
+from datetime import datetime
+import os
+from pathlib import Path
+
 
 
 def get_args():
@@ -65,6 +69,8 @@ def get_args():
 
     parser.add_argument('-c', '--config', default='', type=str, metavar='FILE',
                         help='YAML config file specifying default arguments')
+    parser.add_argument('--name', default='default', type=str,
+                        help='The name of the experiment')
 
     # Dataset parameters
     # Keep this argument outside the dataset group because it is positional.
@@ -432,15 +438,42 @@ def prepare_data_loaders(args, trainloader, root='/state/partition1/rs8020/'):
     return trainloader_trim, trainloader_trim_test
 
 
+
 def prep_log_dir(original_log_dir, args):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    log_dir = setup_logging(f"{original_log_dir}/logs/{timestamp}")
+    version = 1
+    max_version = 10  # Maximum version number
+
+    # Loop to find a non-existing log directory
+    while version <= max_version:
+        log_dir_name = f"{original_log_dir}/logs/{timestamp}_v{version}"
+        log_dir = Path(log_dir_name)
+
+        if not log_dir.exists():
+            break
+        version += 1
+
+    if version > max_version:
+        print("Reached the maximum version number. Exiting.")
+        exit(1)
+
+    log_dir.mkdir(parents=True, exist_ok=True)
     args.log_dir = log_dir
-    os.makedirs(log_dir, exist_ok=True)
+
     file_path = os.path.join(log_dir, args.file_name)
     csv_file_path = log_dir / 'results.csv'
+
     return csv_file_path, file_path, log_dir
 
+
+def get_grad_norm(model_params):
+    norm = 0
+    for p in model_params:
+        try:
+            norm += torch.linalg.norm(p.grad.detach().data).item()**2
+        except:
+            pass
+    return norm**0.5
 
 def calculate_metrics(
         model: Module,
@@ -448,13 +481,13 @@ def calculate_metrics(
         device: torch.device,
         criterion: Callable,
         num_of_steps: int = -1,
-        test_classes: Optional[List[int]] = None) -> Tuple[Union[float, int], float]:
+        test_classes: Optional[List[int]] = None) -> Tuple[Union[float, int], float, float]:
     model.eval()
 
     correct_predictions, total_predictions = 0, 0
     total_loss = 0.0
     steps_completed = 0
-
+    grads_average = 0.
     with torch.no_grad():
         for images, labels in data_loader:
             if num_of_steps > 0 and steps_completed >= num_of_steps:
@@ -465,6 +498,7 @@ def calculate_metrics(
             images, labels = images.to(device), labels.to(device)
             outputs = model(images)
             loss = criterion(outputs, labels)
+            grads_average +=get_grad_norm(model.parameters())
 
             total_loss += loss.item()
 
@@ -482,5 +516,5 @@ def calculate_metrics(
 
     accuracy = (correct_predictions / total_predictions) * 100 if total_predictions else 0
     loss = total_loss / steps_completed if steps_completed else 0.0
-
-    return accuracy, loss
+    grads_average = grads_average / steps_completed
+    return accuracy, loss, grads_average

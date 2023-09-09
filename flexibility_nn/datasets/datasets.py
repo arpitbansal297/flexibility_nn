@@ -261,6 +261,7 @@ class GaussianRandomDataset(Dataset):
 
         # Generate a Gaussian random array of the same shape as the data
         random_state = np.random.RandomState(index)  # Use the index as the seed
+        original_target = target
 
         if self.random_label:
             target = random_state.randint(0, self.num_of_labels)
@@ -280,7 +281,7 @@ class GaussianRandomDataset(Dataset):
                 per = torch.from_numpy(random_state.permutation(math.prod(self.input_shape)))
                 data =  data_reshpaed[per].reshape(self.input_shape).float()
 
-
+        #print ('TARGET', original_target, target)
         return data, target
 
     def __len__(self):
